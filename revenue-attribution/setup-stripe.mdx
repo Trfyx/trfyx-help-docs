@@ -30,9 +30,7 @@ Stripe is the most popular payment provider for SaaS and online businesses. Conn
     </Warning>
   </Step>
   <Step title="Paste the key in Trfyx">
-    In your Trfyx dashboard, go to **Site Settings → Payments**.
-
-    Select **Stripe** as your provider and paste the restricted API key (it starts with `rk_live_`).
+    In your Trfyx dashboard, open **Integrations** and select **Stripe**. Paste the restricted API key (it starts with `rk_live_`).
 
     Click **Connect**.
   </Step>
@@ -55,25 +53,28 @@ Stripe is the most popular payment provider for SaaS and online businesses. Conn
 
     Check that:
     - The amount is correct
-    - The match method shows (e.g., "checkout URL detection" or "email fallback")
+    - The match method shows (e.g., "explicit session" or "email fallback")
     - The source attribution looks right (if you visited from a campaign link)
   </Step>
 </Steps>
 
 ## Improving Stripe attribution quality
 
-For the best possible attribution, pass the Trfyx visitor ID in your Stripe Checkout session metadata:
+For the best possible attribution, pass the Trfyx visitor ID when you create the Stripe Checkout session. The tracker stores it in the `df_visitor_id` cookie:
 
 ```javascript
+const visitorId = req.cookies.df_visitor_id; // set by the Trfyx tracker
+
 const session = await stripe.checkout.sessions.create({
   // ... your normal checkout config
-  metadata: {
-    trfyx_visitor_id: visitorId // from the Trfyx tracker
-  }
+  client_reference_id: visitorId,
+  metadata: { df_visitor_id: visitorId },
+  // for subscriptions, so renewals carry it too:
+  subscription_data: { metadata: { df_visitor_id: visitorId } },
 });
 ```
 
-This gives you **Step 1 (explicit session)** matching with high confidence, instead of relying on checkout URL detection or email fallback.
+This gives you **Step 1 (explicit session)** matching with high confidence, instead of relying on email fallback.
 
 ## What Stripe data flows into Trfyx
 
@@ -96,10 +97,9 @@ This gives you **Step 1 (explicit session)** matching with high confidence, inst
     4. Verify your restricted key hasn't been revoked
   </Accordion>
   <Accordion title="All payments show as 'unattributed'">
-    This usually means the Trfyx tracker isn't installed on your checkout success page, or visitors are blocking the tracker. Try:
-    - Confirming the tracker loads on your post-checkout page
+    This usually means the visitor ID isn't reaching Stripe, or visitors are blocking the tracker. Try:
+    - Passing the visitor ID when you create the checkout (see above)
     - Setting up a [proxy](/proxy-guide) to avoid ad blockers
-    - Passing the visitor ID in checkout metadata (see above)
   </Accordion>
   <Accordion title="Duplicate payments appearing">
     Trfyx deduplicates by Stripe event ID. If you're seeing duplicates, you may have two webhook endpoints pointing to the same Trfyx site. Check **Developers → Webhooks** in Stripe and remove any extra endpoints.
@@ -108,4 +108,4 @@ This gives you **Step 1 (explicit session)** matching with high confidence, inst
 
 ## Disconnecting Stripe
 
-Go to **Site Settings → Payments** and click **Disconnect**. This removes the webhook from Stripe and deletes the integration record. Historical revenue data is preserved.
+Open **Integrations**, select **Stripe**, and click **Disconnect**. This removes the webhook from Stripe and deletes the integration record. Historical revenue data is preserved.
