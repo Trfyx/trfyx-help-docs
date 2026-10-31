@@ -26,6 +26,7 @@
             "expanded": false,
             "pages": [
               "analytics/overview",
+              "bot-traffic-tracking"
               "performance"
             ]
           },
