@@ -1,0 +1,652 @@
+---
+title: "Trfyx for AI coding agents"
+description: "Instructions an AI coding agent follows to install Trfyx, add custom events, identify users and set up revenue attribution. Paste https://help.trfyx.com/agent into your agent."
+sidebarTitle: "AI agent setup"
+icon: "robot"
+---
+
+This file teaches you, the coding agent, how to add Trfyx analytics to the
+user's website or app. Trfyx builds every report (pageviews, events, goals,
+funnels, users, revenue) from one tracking script, plus a payment-provider
+connection for revenue.
+
+## How you work with the user
+
+Pasting this file is a request to set up Trfyx, not permission to change
+whatever you like. Work in this rhythm:
+
+1. **Installing the tracking script needs no extra permission.** It's the one
+   thing this file asks you to do. Ask for the website ID and domain if you
+   don't have them, then add the script (step 2).
+2. **For anything else, suggest first and let the user choose.** That covers
+   custom events, identify, properties, revenue attribution and HTML
+   attributes. Read the codebase and present one short list of what you
+   could add (step 3). Implement only what the user picks.
+3. **Once the user has picked, do the work without stopping at every step.**
+   Implement all the chosen items, then summarise what you changed. Check
+   back mid-way only if you need something you don't have, or the work turns
+   out bigger or different from what you described. For example, if the
+   checkout code needs restructuring, or `client_reference_id` is already
+   used for something else.
+4. **Keep changes to payment and sign-in code minimal and additive.** Add the
+   tracking lines; never change prices, amounts, currencies, redirect URLs or
+   existing logic.
+5. **Never do these unless the user asks:** commit, push, deploy, install
+   packages, edit `.env` files or secrets, or delete existing code.
+6. **Don't invent values.** Never guess a website ID or domain. If the code
+   doesn't match what this file describes, say so instead of improvising.
+7. **Respect privacy.** Never send passwords, payment details or text the
+   user typed into forms. Name and email go only in `identify` or the revenue
+   email fallback.
+
+---
+
+## Workflow
+
+### Step 1: look before you touch anything (read-only)
+
+Find out, without editing:
+
+- The framework and where the root layout / `<head>` lives.
+- Whether Trfyx is already installed: search for `script.js` or
+  `script.cookieless.js` with `data-website-id`, and for `window.trfyx` or
+  `trfyx(`.
+- Where sign-up, sign-in, onboarding, key product actions, lead forms and
+  checkout happen. Note the line where each one **succeeds**.
+- Which payment provider is used (Stripe, LemonSqueezy, other) and where the
+  checkout session, link or payment is created on the server.
+- Where the signed-in user object is available on the client.
+
+### Step 2: install the script
+
+If the script is missing, ask the user for (unless they already gave them):
+
+- their **website ID**, from Trfyx → Settings → Installation → Tracking
+  script (the `data-website-id` in the snippet), and
+- the **domain** they registered in Trfyx.
+
+Then add it to the site's `<head>`:
+
+```html
+<script
+  defer
+  data-website-id="YOUR_WEBSITE_ID"
+  data-domain="example.com"
+  src="https://app.trfyx.com/script.js">
+</script>
+```
+
+- Both `data-website-id` and `data-domain` are required; without either the
+  script does nothing.
+- `data-domain` is the root domain (`example.com`, not `www.example.com`).
+  The visitor cookie is set on it, so `www.`, `app.` and `blog.` share one
+  visitor.
+- If the user's Trfyx install screen shows a different `src` (a custom
+  tracking subdomain, or `script.cookieless.js`), use what their screen shows.
+
+Where it goes:
+
+| Stack | Location |
+|---|---|
+| Next.js App Router | `app/layout.tsx`: `import Script from "next/script"` and `<Script src="https://app.trfyx.com/script.js" data-website-id="…" data-domain="…" strategy="afterInteractive" />` |
+| Next.js Pages Router | the same `<Script>` in `pages/_app.tsx` |
+| Vite / CRA React, Vue, Svelte, Angular, static HTML | `index.html` `<head>` |
+| Nuxt | `nuxt.config.ts` → `app.head.script: [{ src: "https://app.trfyx.com/script.js", defer: true, "data-website-id": "…", "data-domain": "…" }]` |
+| Remix, SvelteKit, Astro, Rails, Django, Laravel, PHP | the root layout / base template `<head>` |
+| WordPress | the theme header, or a header-code plugin |
+| Webflow, Framer, Wix, Squarespace | site-wide custom code → Head |
+| Shopify | don't paste anything: the user connects the store from Trfyx (Installation → Shopify), which installs tracking and counts orders |
+
+For Google Tag Manager or another tag manager, use a Custom HTML tag that
+injects the script:
+
+```html
+<script>
+  (function () {
+    var s = document.createElement("script");
+    s.defer = true;
+    s.src = "https://app.trfyx.com/script.js";
+    s.setAttribute("data-website-id", "YOUR_WEBSITE_ID");
+    s.setAttribute("data-domain", "example.com");
+    document.head.appendChild(s);
+  })();
+</script>
+```
+
+Tracking is **off on `localhost`, `127.0.0.1`, `*.local`, `*.localhost` and
+`file://`** so development traffic doesn't pollute real data. To test locally
+the user can temporarily add `data-allow-localhost="true"`. Don't leave it in
+committed code.
+
+After installing, tell the user what now works with no further code (see
+"What the script does on its own"), then go straight on to step 3.
+
+### Step 3: suggest what else to add
+
+Using what you found in step 1, give the user one numbered list of what you
+could add, each with the file and one line on why. For example:
+
+> I can add:
+> 1. `signup_completed` event after sign-up succeeds (`src/auth/signup.tsx:88`): counts real sign-ups for a sign-up funnel.
+> 2. `identify` in the signed-in layout (`app/(app)/layout.tsx`): shows signed-in users by name in the Users report.
+> 3. Revenue attribution in the Stripe checkout route (`app/api/checkout/route.ts:21`): ties each payment to the visitor's traffic source.
+> 4. `data-trfyx-goal` on the "Start free trial" buttons (`components/hero.tsx`): counts CTA clicks.
+>
+> Which of these would you like? ("all" is fine.)
+
+Wait for the answer. Implement only what the user picks.
+
+### Step 4: implement the chosen items
+
+Follow the sections below. Do all the chosen items in one go, then list the
+files and lines you changed.
+
+### Step 5: verify, then tell the user what to set up in Trfyx
+
+See "Verify it works" and "Goals and funnels". Code alone creates no goals.
+
+---
+
+## What the script does on its own
+
+Once installed, with no other code:
+
+| Recorded | Details |
+|---|---|
+| Pageviews | Including single-page-app route changes (`history.pushState`, back/forward). The same URL is counted at most once a minute. There is no manual pageview call; don't add one. |
+| Source | Referrer, `utm_*` tags, ad click IDs (`gclid`, `gbraid`, `wbraid`, `fbclid`, `msclkid`, `ttclid`, `twclid`, `li_fat_id`) |
+| Visitor | Country, region, city, browser, OS, device, language, screen size |
+| Engagement | Maximum scroll depth and visible time per page (powers scroll-depth goals) |
+| `form_submission` event | Any `<form>` submit that passes the browser's own validation. Properties: the form's `id` and `name` attributes if set. |
+| `file_download` event | Clicks on links to pdf, xlsx, docx, txt, rtf, csv, exe, key, pps, ppt, pptx, 7z, pkg, rar, gz, zip, avi, mov, mp4, mpeg, wmv, midi, mp3, wav, wma, dmg. Property: `url`. |
+| `external_link` event | Clicks on links to another site. Properties: `url`, `text`. |
+| Online now | A heartbeat every 15 s while the tab is visible |
+
+Session replay, heatmaps and web vitals are switched on per site in the Trfyx
+dashboard; no code is needed. Inputs are masked in replays by default.
+
+The script ignores automated browsers (Playwright, Puppeteer, Selenium,
+headless Chrome) and pages shown inside an iframe.
+
+---
+
+## Custom events
+
+```js
+window.trfyx("signup_completed", { method: "email", plan: "pro" });
+```
+
+- **The first argument is the event name.** There is no `"event"` command:
+  `trfyx("event", "signup")` is wrong.
+- The second argument is optional properties (see "Properties").
+- The optional third argument is a callback that runs when the request
+  finishes, e.g. to navigate away only after the event was sent:
+  `window.trfyx("download_clicked", {}, () => { location.href = url; })`.
+- Use short `snake_case` names and keep them stable. Goals match the name
+  exactly and case-sensitively.
+- **Reserved names, never use them as events:** `payment`, `identify`,
+  `props` (these are commands), and `pageview`, `heartbeat`, `engagement`
+  (these can't be goals). Don't reuse the automatic names `form_submission`,
+  `file_download` and `external_link` for something else.
+
+### Always queue calls (important)
+
+The script loads with `defer`, so `window.trfyx` may not exist when your code
+runs. Calling it then throws. Add this queue stub once; calls made before the
+script loads are replayed when it loads.
+
+Plain HTML, placed before any call (e.g. right above the Trfyx script tag):
+
+```html
+<script>
+  window.trfyx = window.trfyx || function () { (window.trfyx.q = window.trfyx.q || []).push(arguments); };
+</script>
+```
+
+In TypeScript/JavaScript apps, add one helper (e.g. `lib/trfyx.ts`) and call
+it everywhere instead of `window.trfyx`:
+
+```ts
+type TrfyxFn = ((...args: unknown[]) => void) & { q?: unknown[][] };
+
+export function trfyx(...args: unknown[]) {
+  if (typeof window === "undefined") return; // server render: nothing to send
+  const w = window as unknown as { trfyx?: TrfyxFn };
+  w.trfyx =
+    w.trfyx ||
+    Object.assign(
+      (...a: unknown[]) => {
+        (w.trfyx!.q = w.trfyx!.q || []).push(a);
+      },
+      { q: [] as unknown[][] },
+    );
+  w.trfyx(...args);
+}
+```
+
+### Send conversions on success, not on click (important)
+
+A click or a form submit also happens when the request then fails (email
+already taken, validation error, card declined). Send the event after the
+server confirms success:
+
+```ts
+const { error } = await signUp({ email, password });
+if (error) {
+  showError(error);
+  return;
+}
+trfyx("signup_completed", { method: "email" }); // only after success
+router.push("/welcome");
+```
+
+If success is only known on the server (webhook, background job, email
+verification link), suggest one of these instead:
+
+- send the event on the page the user lands on afterwards (`/welcome`,
+  `/verified`), once per success; or
+- skip the event and use a **pageview goal** on that page (no code at all).
+
+### Events worth suggesting
+
+| Moment | Event | Useful properties |
+|---|---|---|
+| Account created | `signup_completed` | `method` (email / google / github), `plan` |
+| Email verified | `email_verified` | |
+| Onboarding finished | `onboarding_completed` | |
+| Trial started | `trial_started` | `plan` |
+| Upgrade | `upgrade_completed` (revenue itself comes from the payment provider) | `plan`, `billing` (monthly / yearly) |
+| Lead or demo request sent | `lead_submitted` | `form` (contact / demo) |
+| Newsletter sign-up | `newsletter_subscribed` | `location` (footer / popup) |
+| Core product action | e.g. `project_created`, `invite_sent`, `report_exported` | type or kind |
+| Shop funnel | `add_to_cart`, `checkout_started` | `product`, `plan` |
+
+---
+
+## Properties
+
+Properties let reports and goals split an event, e.g. sign-ups by `method`.
+
+**The browser checks properties before sending, and one bad property drops
+the whole event.** The only sign is an error in the browser console. So:
+
+- **Names:** letters, digits, `_` and `-` only, 1–32 characters. Names are
+  lowercased (`planType` becomes `plantype`), so write `snake_case`.
+- **At most 10 properties per call.** An 11th drops the event.
+- **Values** become strings, are cut to 255 characters, and have
+  `< > ' " &`, `javascript:`, `data:` and `vbscript:` removed. Send flat
+  strings, numbers or booleans. Nested objects and arrays are not stored.
+- Don't put personal data (email, phone, full name, address, free text the
+  user typed) in event properties.
+
+### Properties on every event: `props`
+
+```js
+window.trfyx("props", { plan: "pro", ab_test: "pricing_v2_b" });
+```
+
+This sends nothing by itself. It attaches these properties to every later
+event on the same page load, pageviews included. A later call merges in; it
+doesn't replace. Call it early on each page load for facts true for the whole
+visit: plan, A/B variant, logged-in state. Same rules as above.
+
+---
+
+## Identify signed-in users
+
+```js
+window.trfyx("identify", {
+  user_id: "usr_123",          // required: your stable internal user ID
+  name: "Ada Lovelace",        // shown instead of an anonymous visitor name
+  email: "ada@example.com",    // shown on the user's profile
+  image: "https://…/ada.png",  // avatar URL
+  plan: "pro",                 // any other key is stored as a trait
+});
+```
+
+- Without `user_id` the call is ignored.
+- The visitor then appears by name in Trfyx's **Users** report with all their
+  sessions and events on that browser, including those from before they
+  signed in.
+- Call it **on every page load while the user is signed in** (e.g. in the
+  authenticated layout), and right after sign-up or sign-in succeeds.
+- **Updating a user** (new name, new plan): call `identify` again with the
+  same `user_id` and the new values. The latest value of each trait wins.
+- Send flat values only, and keep it to about 25 traits.
+- Only identify with real data from your session or database, never from
+  unconfirmed form input.
+- Nothing is needed on sign-out.
+- When you suggest identify, mention that it sends `name` and `email`, so
+  the user can choose to send only `user_id` and a plan instead.
+
+React example:
+
+```tsx
+"use client";
+import { useEffect } from "react";
+import { trfyx } from "@/lib/trfyx";
+
+export function TrfyxIdentify({ user }: { user: { id: string; name: string; email: string; plan?: string } }) {
+  useEffect(() => {
+    trfyx("identify", { user_id: user.id, name: user.name, email: user.email, plan: user.plan ?? "" });
+  }, [user.id, user.name, user.email, user.plan]);
+  return null;
+}
+```
+
+Render `<TrfyxIdentify user={…} />` once in the signed-in layout.
+
+---
+
+## Revenue attribution
+
+Trfyx ties each payment to the visitor who made it, and so to their source,
+campaign, landing page and country. It takes two parts.
+
+**Part 1 (the user, in Trfyx):** connect the payment provider under
+Integrations → Stripe or LemonSqueezy. Trfyx creates the webhook itself. You
+don't write webhook code for Trfyx.
+
+**Part 2 (code, if the user picked it):** pass the visitor's ID into the checkout.
+Without it a payment can only be matched by weaker signals, or not at all.
+
+### Where the visitor ID comes from
+
+The script stores it in a first-party cookie named **`df_visitor_id`**, set on
+the root domain from `data-domain` and kept for 365 days.
+
+- **Backend on the same site** (same root domain): read the cookie from the
+  incoming request when creating the checkout.
+- **Backend on a different domain**: the browser won't send the cookie there.
+  Read it in the browser and include it in the request that creates the
+  checkout:
+  ```js
+  const visitorId = document.cookie.match(/(?:^|;\s*)df_visitor_id=([^;]+)/)?.[1];
+  ```
+- The cookie can be missing (ad blocker, local development, cookieless mode).
+  **Never block or fail a checkout because it's missing:** pass the ID only
+  when you have it.
+
+### Stripe Checkout
+
+Pass the ID as `client_reference_id`. For subscriptions, also put it in the
+subscription's metadata so each renewal invoice carries it.
+
+```ts
+// Example: Next.js route handler that creates the Checkout Session
+import { cookies } from "next/headers";
+
+const visitorId = (await cookies()).get("df_visitor_id")?.value;
+
+const session = await stripe.checkout.sessions.create({
+  // …the user's existing parameters, unchanged…
+  ...(visitorId && {
+    client_reference_id: visitorId,
+    metadata: { df_visitor_id: visitorId },
+    // subscription mode only:
+    subscription_data: { metadata: { df_visitor_id: visitorId } },
+  }),
+});
+```
+
+When adding this to existing code:
+
+- **Merge, don't replace.** If the code already sets `metadata` or
+  `subscription_data.metadata`, add the `df_visitor_id` key to those objects.
+  Never drop their existing keys or fields.
+- If `client_reference_id` is already used for something else (often the
+  app's own user ID), **don't overwrite it**. Use the metadata keys only, and
+  tell the user why.
+- Express / Node: `req.cookies.df_visitor_id` (with `cookie-parser`) or parse
+  `req.headers.cookie`. In other stacks, read the request cookie the usual way.
+
+What Trfyx reads from Stripe:
+
+| Stripe object | Where the visitor ID is read |
+|---|---|
+| Checkout Session | `client_reference_id`, else metadata |
+| Invoice (subscription payments and renewals) | subscription metadata, else invoice metadata |
+| PaymentIntent created directly (Elements, custom flow) | metadata. **A PaymentIntent without it is ignored**, so it must be tagged: `stripe.paymentIntents.create({ …, metadata: { …existing, df_visitor_id: visitorId } })` |
+
+Use the metadata key `df_visitor_id`. Customer metadata is not read.
+
+**Stripe Payment Links (no backend):** append the visitor ID to the link in
+the browser:
+`https://buy.stripe.com/…?client_reference_id=<visitor id>`.
+
+Renewals: once a subscription's first payment is attributed, later renewals
+of the same subscription are attributed to the same visitor automatically.
+
+### LemonSqueezy
+
+Put the visitor ID in the checkout's custom data under `df_visitor_id`:
+
+- **Checkout link or overlay:** append
+  `?checkout[custom][df_visitor_id]=<visitor id>`, built in the browser from
+  the cookie. If the link already has a `?`, use `&`.
+- **Checkouts API:** in the create-checkout body, add it at
+  `attributes.checkout_data.custom.df_visitor_id`, merged with any custom
+  data already there.
+
+Trfyx reads it back from the webhook's `meta.custom_data`.
+
+### Fallback: match by email
+
+If the visitor ID can't be passed (e.g. a hosted checkout you can't change),
+suggest sending the buyer's email from the browser before redirecting to
+checkout, or on the success page:
+
+```js
+window.trfyx("payment", { email: buyerEmail });
+```
+
+Trfyx then matches a payment with that customer email to this visitor. It's a
+lower-confidence match and sends the email to Trfyx, so present it as an
+option rather than a default.
+
+Things that **don't** attribute revenue, so don't suggest them for it: the
+`identify` email, success-page URLs, and custom events with an `amount`
+property.
+
+### Shopify
+
+When the store is connected through Trfyx, the script saves the visitor ID on
+the cart and paid orders are attributed automatically. No code is needed.
+
+---
+
+## No-code tracking with HTML attributes
+
+Good for marketing pages, CMS content and buttons where adding JavaScript is
+awkward.
+
+### Click goals: `data-trfyx-goal`
+
+```html
+<button data-trfyx-goal="start_trial" data-trfyx-goal-plan="pro" data-trfyx-goal-location="hero">
+  Start free trial
+</button>
+```
+
+- Sends a custom event named by the attribute value when the element, or
+  anything inside it, is clicked or activated with Enter or Space.
+- Each `data-trfyx-goal-<name>` attribute becomes a property. Dashes in
+  `<name>` become underscores: `data-trfyx-goal-cta-variant` → `cta_variant`.
+- Works on elements added later too.
+- It counts the **click**, not success. For sign-ups or purchases prefer a JS
+  event after success, or a pageview goal on the success page.
+
+### Element-seen events: `data-trfyx-scroll`
+
+```html
+<section data-trfyx-scroll="saw_pricing" data-trfyx-scroll-threshold="0.5" data-trfyx-scroll-delay="1000">
+```
+
+- Sends a custom event when the element becomes visible.
+- `threshold` is the visible fraction from 0 to 1 (default 0.5). `delay` is
+  the milliseconds it must stay visible (default 0).
+- Other `data-trfyx-scroll-<name>` attributes become properties. The event
+  also carries `scroll_percentage`, `threshold` and `delay`.
+- It fires again each time the element leaves and re-enters the viewport.
+
+### Forms
+
+Every valid form submit already sends `form_submission`. Suggest giving
+important forms an `id` (`<form id="contact">`) so a goal can single one out
+with the property condition `id = contact`. It fires on submit even if the
+server then rejects the form; for real leads, suggest a custom event on
+success.
+
+---
+
+## Script tag options
+
+Add these to the same `<script>` tag only when the user wants that behaviour.
+Each value is `"true"` unless shown otherwise.
+
+| Attribute | Effect |
+|---|---|
+| `data-allow-localhost` | Track on localhost and `*.local` (for testing only) |
+| `data-allow-file-protocol` | Track `file://` pages |
+| `data-debug` | Also track inside iframes, and log replay/heatmap activity |
+| `data-disable-console` | Silence the script's `Trfyx:` console messages |
+| `data-allowed-hostnames="shop.other.com,app.other.io"` | Other domains the user owns: links to them carry the visitor's identity across instead of counting as `external_link`. The user must also add those domains in Trfyx → Settings → Installation → Domains, or their events are rejected. |
+| `data-hash-based-routing` | Count `#/route` hash changes as pageviews (older hash-router SPAs) |
+| `data-disable-form-tracking` | No automatic `form_submission` events |
+| `data-disable-file-downloads` | No automatic `file_download` events |
+| `data-file-types="pdf,csv"` | Replace the file-download extension list |
+| `data-add-file-types="sketch,fig"` | Add extensions to that list |
+| `data-disable-engagement-tracking` | No scroll-depth or visible-time measurement. **This also breaks scroll-depth goals.** |
+| `data-disable-replay` | Never record session replays on this page |
+| `data-replay-sample-rate="25"` | Percent of visits to record, overriding the dashboard |
+| `data-replay-mask-all-text` | Replace all page text with `*` in replays |
+| `data-replay-block-selector=".a, #b"` | Elements left out of replays entirely |
+| `data-replay-mask-selector=".pii"` | Elements whose text is masked in replays |
+| `data-disable-heatmaps` | Never collect heatmap data on this page |
+| `data-heatmap-sample-rate="25"` | Percent of visits included in heatmaps |
+| `data-disable-web-vitals` | Never measure Core Web Vitals on this page |
+
+For single elements in replays, use the class `rr-block` (left out),
+`rr-mask` (text masked) or `rr-ignore` (input ignored), or the attributes
+`data-replay-block`, `data-replay-mask`, `data-replay-ignore`. Suggest these
+for sensitive areas such as account details or billing pages.
+
+### Cookieless mode
+
+If the user turns on **Cookieless mode** in Trfyx → Settings → Installation, the snippet's
+`src` becomes `https://app.trfyx.com/script.cookieless.js`. Tell them the
+trade-offs:
+
+- No cookies. Visitors are counted by a server-side hash that changes daily,
+  so a returning person counts as a new visitor each day.
+- These **don't work** in cookieless mode: `trfyx("props", …)`, the callback
+  argument, `data-allowed-hostnames`, `data-hash-based-routing`, session
+  replay, heatmaps, web vitals, the Users report, and revenue attribution by
+  visitor ID (there is no `df_visitor_id` cookie). Only the email fallback is
+  left for revenue.
+- Custom events, `identify`, `payment`, `data-trfyx-goal`,
+  `data-trfyx-scroll` and the automatic events work the same.
+
+---
+
+## Verify it works
+
+Walk the user through this, or do it yourself if you can run a browser:
+
+1. Open the site (deployed, or locally with `data-allow-localhost="true"`)
+   with DevTools → Network, filtered by `collect`.
+2. On page load, a `POST …/api/collect` with `"type":"pageview"` returns
+   **202**.
+3. Trigger the action. The request body should have `"type":"custom"` and
+   `extraData.eventName` set to your event name, plus its properties.
+4. If nothing is sent, read the console's `Trfyx:` messages:
+   - "Tracking disabled on localhost" → add `data-allow-localhost="true"` while testing.
+   - "Missing website ID or domain" → fix the script tag.
+   - "Invalid property name" or "Maximum 10 custom parameters allowed" → fix the properties.
+   - "Tracking disabled inside an iframe" → expected inside frames.
+   - "automated client detected" → you're in Playwright, Puppeteer or Selenium; test in a normal browser.
+   - "tracking disabled via localStorage flag" → see below.
+   - `window.trfyx is not a function` → add the queue stub.
+5. Ad blockers can block analytics, so test in a clean browser profile.
+6. The event appears in the Trfyx dashboard under Events within seconds.
+
+For revenue, the user makes a test purchase (in test mode, with the provider
+connected in test mode), then checks that the Checkout Session or PaymentIntent
+in the provider's dashboard shows the `df_visitor_id` / `client_reference_id`.
+
+**Excluding the user's own visits:** in the browser console on their site,
+`localStorage.setItem("df_ignore", "true")`. Remove the key to undo. Office
+IPs and staging hostnames can be excluded in Trfyx → Settings →
+Exclusions.
+
+---
+
+## Goals and funnels (in the Trfyx dashboard)
+
+Events become conversions only when the user creates goals. You can't do this
+from code, so finish by giving the user an exact list, for example:
+
+> **Goals → New goal**
+> 1. Trigger *Pageview*, page path `/signup`, display name "Visited sign-up"
+> 2. Trigger *Custom event*, event name `signup_completed`, display name "Signed up"
+>    (optional: *Only count when* `method` = `email`)
+> 3. Trigger *Custom event*, event name `trial_started`, display name "Started trial"
+>
+> **Funnels → New funnel:** Visited sign-up → Signed up → Started trial
+
+Facts to get right:
+
+- **Goal triggers:**
+  - *Pageview* matches a page path.
+  - *Custom event* matches the event name exactly, case-sensitively.
+  - *Scroll depth* counts when a visitor scrolls a given page at least N %
+    down (1–100).
+- Prefer a *Pageview* goal when the step has its own URL (`/thank-you`). Use a
+  *Custom event* when it doesn't, or when the URL can be reached without the
+  action really happening.
+- **Paths:** a leading `/` is added automatically. `*` is a wildcard
+  (`/blog/*`, `/docs/*/install`). Without `*` the match is exact. Scroll-depth
+  goals take one exact path, no wildcard.
+- **Only count when:** up to 3 `property = value` conditions, all of which
+  must match on the same event, exactly. It works on all three triggers. It
+  only sees properties the site sends, not country, browser, referrer or UTM
+  tags.
+- The automatic events `form_submission`, `file_download` and
+  `external_link` can be custom-event goals, with drill-downs by page, file
+  or URL.
+- **Funnels:** 2–8 steps, each a different goal, completed within 24 hours of
+  the first step. With *Allow other activity between steps* on (usually
+  right), other pages and events may happen in between. With it off, the
+  steps must follow one another directly.
+- Goals are queries over events already recorded, so a goal created today
+  also shows past conversions for events the site was already sending.
+
+---
+
+## Quick reference
+
+```js
+// queue stub: once, before any call
+window.trfyx = window.trfyx || function () { (window.trfyx.q = window.trfyx.q || []).push(arguments); };
+
+trfyx("event_name");                                  // custom event
+trfyx("event_name", { key: "value" });                // with properties (≤ 10, snake_case)
+trfyx("event_name", { key: "value" }, () => {});      // with a callback
+trfyx("props", { plan: "pro" });                      // properties on every later event
+trfyx("identify", { user_id: "123", name: "Ada" });   // signed-in user; call again to update
+trfyx("payment", { email: "buyer@example.com" });     // revenue fallback, matched by email
+```
+
+```html
+<button data-trfyx-goal="cta_clicked" data-trfyx-goal-location="hero">…</button>
+<section data-trfyx-scroll="saw_pricing">…</section>
+```
+
+- Visitor ID cookie for checkouts: `df_visitor_id`
+- Stripe: `client_reference_id` and/or metadata `df_visitor_id`
+- LemonSqueezy: `checkout[custom][df_visitor_id]`
+
+Help: https://help.trfyx.com
+
+**Reminder: install the script, suggest everything else, and implement only
+what the user picks — in one go, without asking at every step.**

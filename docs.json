@@ -18,7 +18,8 @@
             "pages": [
               "index",
               "quickstart",
-              "install-tracking"
+              "install-tracking",
+              "agent"
             ]
           },
           {
