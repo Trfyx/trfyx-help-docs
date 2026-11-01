@@ -9,6 +9,26 @@ Session replay lets you inspect a recorded user session and see behavioral conte
 
 Replay is most effective when you first identify a pattern in analytics and then review representative sessions to understand what might explain it.
 
+## Configure session replay
+
+Open **Settings** from the Session replay page to control whether Trfyx records sessions and how much visitor traffic is included. [https://app.mintlify.com/trfyx/trfyx/~/4402ea60-5690-45ab-9ec2-5c684f0b2403](https://app.mintlify.com/trfyx/trfyx/&#x7E;/4402ea60-5690-45ab-9ec2-5c684f0b2403)
+
+### Recording settings
+
+The **Record sessions** toggle controls whether Trfyx captures visitor sessions for replay. Turn it on to collect recordings and turn it off to stop recording new sessions.
+
+The **Sample rate** controls the share of visits that are recorded. For example, a value of **100%** means the recording configuration is applied to all visits that are eligible for session replay. Lower sampling rates reduce the number of recorded sessions while still giving you a representative sample of visitor behavior.
+
+Use a lower sample rate when you have enough traffic that recording every visit is unnecessary. Use a higher rate when you need broader coverage while investigating a specific issue.
+
+### Privacy settings
+
+The **Privacy** section controls what visitor input is visible in recordings.
+
+**Mask typed text** replaces typed values in the replay with `***` instead of showing the original text. Keep this enabled when you do not need to inspect the exact values visitors enter.
+
+> **Important:** Privacy settings should be tested with realistic test data before you rely on them in production. Do not assume that a sensitive field is protected simply because session replay is enabled.
+
 ## When to use replay
 
 Use session replay when you need to investigate questions such as:
@@ -43,7 +63,9 @@ A replay provides context for a specific session. It does not explain what every
 
 ## Privacy and responsible use
 
-Session recordings can contain information about people's behavior and may expose sensitive content if the implementation is not configured appropriately.
+Session recordings can contain information about people's behavior and may expose sensitive content if the implementation is not configured appropriately. The **Sample rate** and **Mask typed text** settings help you control how much data is recorded and how typed input appears in replays, but you should still verify the captured output with test data.
+
+[https://app.mintlify.com/trfyx/trfyx/~/dbf3b438-24b0-473a-ab41-a9224b061fa0](https://app.mintlify.com/trfyx/trfyx/&#x7E;/dbf3b438-24b0-473a-ab41-a9224b061fa0)
 
 Before enabling replay in production:
 
